@@ -1,0 +1,4 @@
+- hosts: vm
+  become: yes
+  roles:
+    - hostmetrics

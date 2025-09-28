@@ -1,0 +1,24 @@
+- name: Копировать Python-скрипт экспортера
+  ansible.builtin.copy:
+    src: hostmetrics.py
+    dest: /usr/local/bin/hostmetrics.py
+    owner: stepan
+    group: stepan
+    mode: '0755'
+
+- name: Копировать systemd unit
+  ansible.builtin.copy:
+    src: hostmetrics.service
+    dest: /etc/systemd/system/hostmetrics.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Перезагрузить конфигурацию systemd
+  ansible.builtin.command: systemctl daemon-reload
+
+- name: Включить и запустить сервис hostmetrics
+  ansible.builtin.systemd_service:
+    name: hostmetrics.service
+    enabled: true
+    state: started

@@ -1,0 +1,13 @@
+[Unit]
+Description=Host Metrics Exporter (Prometheus text)
+After=network.target
+
+[Service]
+Type=simple
+User=stepan
+ExecStart=/usr/bin/python3 /usr/local/bin/hostmetrics.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
