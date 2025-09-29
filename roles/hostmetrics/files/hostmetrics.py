@@ -2,14 +2,34 @@
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import os, shutil, subprocess
+
+def _in_container():
+    try:
+        if os.path.exists("/.dockerenv"):
+            return True
+        with open("/proc/1/cgroup","rb") as f:
+            data = f.read()
+            if b"docker" in data or b"kubepods" in data or b"container" in data or b"libpod" in data:
+                return True
+    except Exception:
+        pass
+    return False
+
 def detect_host_type():
-    c = subprocess.run(["systemd-detect-virt", "--container"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-    if c.returncode == 0:
-        return "container"
-    v = subprocess.run(["systemd-detect-virt", "--vm"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-    if v.returncode == 0:
-        return "vm"
-    return "bare-metal"
+    try:
+        if _in_container():
+            return "container"
+        sdv = shutil.which("systemd-detect-virt")
+        if sdv:
+            if subprocess.run([sdv,"--container"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                return "container"
+            if subprocess.run([sdv,"--vm"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                return "vm"
+        return "bare-metal"
+    except Exception:
+        return "unknown"
+
 
 def render_metrics():
     host_type = detect_host_type()

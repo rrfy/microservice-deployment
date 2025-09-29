@@ -1,24 +1,96 @@
-- name: Копировать Python-скрипт экспортера
-  ansible.builtin.copy:
-    src: hostmetrics.py
-    dest: /usr/local/bin/hostmetrics.py
-    owner: stepan
-    group: stepan
+- name: Enable CRB
+  ansible.builtin.command: dnf config-manager --set-enabled crb
+  changed_when: false
+
+- name: Install dnf-plugins-core
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+    lock_timeout: 120
+
+- name: Add Docker CE repo
+  ansible.builtin.command: dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+  args:
+    creates: /etc/yum.repos.d/docker-ce.repo
+
+- name: Make cache
+  ansible.builtin.dnf:
+    update_cache: true
+    lock_timeout: 120
+
+- name: Install Docker Engine
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    enablerepo: docker-ce-stable
+    lock_timeout: 120
+
+- name: Enable and start docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Ensure docker service enabled and running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Create app dir
+  ansible.builtin.file:
+    path: /opt/hostmetrics
+    state: directory
     mode: '0755'
 
-- name: Копировать systemd unit
+- name: Copy exporter source
   ansible.builtin.copy:
-    src: hostmetrics.service
-    dest: /etc/systemd/system/hostmetrics.service
-    owner: root
-    group: root
+    src: hostmetrics.py
+    dest: /opt/hostmetrics/hostmetrics.py
     mode: '0644'
 
-- name: Перезагрузить конфигурацию systemd
-  ansible.builtin.command: systemctl daemon-reload
+- name: Copy Dockerfile
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: /opt/hostmetrics/Dockerfile
+    mode: '0644'
 
-- name: Включить и запустить сервис hostmetrics
-  ansible.builtin.systemd_service:
-    name: hostmetrics.service
-    enabled: true
+- name: Ensure Python tooling present
+  ansible.builtin.dnf:
+    name:
+      - python3
+      - python3-pip
+    state: present
+    lock_timeout: 120
+
+- name: Install requests and Docker SDK for Python
+  ansible.builtin.pip:
+    name:
+      - requests
+      - docker
+    executable: pip3
+
+- name: Build image hostmetrics:latest
+  community.docker.docker_image:
+    name: hostmetrics
+    tag: latest
+    build:
+      path: /opt/hostmetrics
+    source: build
+    force_source: true
+    docker_host: "unix:///var/run/docker.sock"
+
+- name: Run container and publish 8080
+  community.docker.docker_container:
+    name: hostmetrics
+    image: hostmetrics:latest
+    published_ports:
+      - "8080:8080"
+    restart_policy: unless-stopped
     state: started
+    docker_host: "unix:///var/run/docker.sock"
